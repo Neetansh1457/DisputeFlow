@@ -326,7 +326,7 @@ cd frontend && npm install && npm run dev
 - [x] System design & architecture
 - [x] Database schema design
 - [x] API endpoint design
-- [ ] Project setup (Spring Boot + PostgreSQL + Kafka)
+- [x] Project setup (Spring Boot + PostgreSQL + Kafka)
 - [ ] Core backend — entities, repositories, REST endpoints
 - [ ] Kafka integration — producer + consumer
 - [ ] Python processing engine — filename parser + PDF validator
