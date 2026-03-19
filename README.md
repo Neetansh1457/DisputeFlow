@@ -330,8 +330,8 @@ cd frontend && npm install && npm run dev
 - [x] Core backend — entities, repositories, REST endpoints
 - [x] Kafka integration — producer + consumer
 - [x] Python processing engine — filename parser + PDF validator
-- [ ] Thread pool implementation — parallel bank processing
-- [ ] Mock bank APIs — FastAPI simulations
+- [x] Thread pool implementation — parallel bank processing
+- [x] Mock bank APIs — FastAPI simulations
 - [ ] React dashboard — upload, jobs, audit log, notifications
 - [ ] Retry mechanism + edge case handling
 - [ ] Unit + integration tests

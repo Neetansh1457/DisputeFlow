@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -26,16 +26,6 @@ app.add_middleware(
 )
 
 
-class ProcessRequest(BaseModel):
-    job_id: str
-    bank_prefix: str
-    bank_name: str
-    mock_endpoint: str
-    case_id: str
-    reason_code: Optional[str] = None
-    document_type: str = "REPRESENTATION"
-    timeout_seconds: int = 30
-
 
 class ProcessResponse(BaseModel):
     job_id: str
@@ -60,23 +50,30 @@ def health():
 
 @app.post("/process", response_model=ProcessResponse)
 async def process_job(
-    request: ProcessRequest,
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    job_id: str = Form(...),
+    bank_prefix: str = Form(...),
+    bank_name: str = Form(...),
+    mock_endpoint: str = Form(...),
+    case_id: str = Form(...),
+    reason_code: Optional[str] = Form(None),
+    document_type: str = Form("REPRESENTATION"),
+    timeout_seconds: int = Form(30)
 ):
     """
     Main processing endpoint.
     Called by Spring Boot Kafka consumer for each upload job.
     """
-    logger.info(f"Processing job {request.job_id} for bank {request.bank_name}")
+    logger.info(f"Processing job {job_id} for bank {bank_name}")
 
     # 1. Read and validate PDF
     file_bytes = await file.read()
     validation = validate_pdf(file_bytes, file.filename)
 
     if not validation.is_valid:
-        logger.warning(f"PDF validation failed for job {request.job_id}: {validation.issue_reason}")
+        logger.warning(f"PDF validation failed for job {job_id}: {validation.issue_reason}")
         return ProcessResponse(
-            job_id=request.job_id,
+            job_id=job_id,
             action_taken="FAILED",
             success=False,
             error_message=validation.issue_reason
@@ -84,39 +81,39 @@ async def process_job(
 
     # 2. Check dispute status on bank portal
     bank_response = check_dispute_status(
-        mock_endpoint=request.mock_endpoint,
-        case_id=request.case_id,
-        timeout_seconds=request.timeout_seconds
+        mock_endpoint=mock_endpoint,
+        case_id=case_id,
+        timeout_seconds=timeout_seconds
     )
 
     dispute_status = bank_response.dispute_status if bank_response.success else None
-    reason_code = request.reason_code or (
+    effective_reason_code = reason_code or (
         bank_response.reason_code if bank_response.success else None
     )
 
     # 3. Make decision based on reason code + dispute status
     decision = make_decision(
-        bank_prefix=request.bank_prefix,
-        reason_code=reason_code,
+        bank_prefix=bank_prefix,
+        reason_code=effective_reason_code,
         dispute_status=dispute_status
     )
 
-    logger.info(f"Decision for job {request.job_id}: {decision.action}")
+    logger.info(f"Decision for job {job_id}: {decision.action}")
 
     # 4. Execute decision
     if decision.action == DecisionAction.ACCEPT:
         result = accept_dispute(
-            mock_endpoint=request.mock_endpoint,
-            case_id=request.case_id,
-            reason_code=reason_code or "",
-            timeout_seconds=request.timeout_seconds
+            mock_endpoint=mock_endpoint,
+            case_id=case_id,
+            reason_code=effective_reason_code or "",
+            timeout_seconds=timeout_seconds
         )
         return ProcessResponse(
-            job_id=request.job_id,
+            job_id=job_id,
             action_taken="ACCEPTED",
             success=result.success,
             dispute_status=dispute_status,
-            reason_code=reason_code,
+            reason_code=effective_reason_code,
             file_hash=validation.file_hash,
             auto_processed=decision.auto_processed,
             remarks=decision.remarks,
@@ -125,11 +122,11 @@ async def process_job(
 
     elif decision.action == DecisionAction.SKIP:
         return ProcessResponse(
-            job_id=request.job_id,
+            job_id=job_id,
             action_taken="SKIPPED",
             success=True,
             dispute_status=dispute_status,
-            reason_code=reason_code,
+            reason_code=effective_reason_code,
             file_hash=validation.file_hash,
             auto_processed=decision.auto_processed,
             remarks=decision.remarks
@@ -137,11 +134,11 @@ async def process_job(
 
     elif decision.action == DecisionAction.FLAG_FOR_REVIEW:
         return ProcessResponse(
-            job_id=request.job_id,
+            job_id=job_id,
             action_taken="FLAGGED_FOR_REVIEW",
             success=True,
             dispute_status=dispute_status,
-            reason_code=reason_code,
+            reason_code=effective_reason_code,
             file_hash=validation.file_hash,
             auto_processed=False,
             remarks=decision.remarks
@@ -151,7 +148,7 @@ async def process_job(
         # Default — UPLOAD
         if not bank_response.success:
             return ProcessResponse(
-                job_id=request.job_id,
+                job_id=job_id,
                 action_taken="FAILED",
                 success=False,
                 file_hash=validation.file_hash,
@@ -159,19 +156,19 @@ async def process_job(
             )
 
         result = upload_document(
-            mock_endpoint=request.mock_endpoint,
-            case_id=request.case_id,
+            mock_endpoint=mock_endpoint,
+            case_id=case_id,
             file_bytes=file_bytes,
             filename=file.filename,
-            timeout_seconds=request.timeout_seconds
+            timeout_seconds=timeout_seconds
         )
 
         return ProcessResponse(
-            job_id=request.job_id,
+            job_id=job_id,
             action_taken="UPLOADED",
             success=result.success,
             dispute_status=dispute_status,
-            reason_code=reason_code,
+            reason_code=effective_reason_code,
             file_hash=validation.file_hash,
             auto_processed=decision.auto_processed,
             remarks=decision.remarks,
