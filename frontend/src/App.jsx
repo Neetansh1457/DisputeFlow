@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import Navbar from './components/Navbar'
 import UploadPage from './pages/UploadPage'
 import JobsDashboard from './pages/JobsDashboard'
@@ -14,6 +15,12 @@ function App() {
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/jobs" element={<JobsDashboard />} />
           <Route path="/audit-logs" element={<AuditLogPage />} />
+          <Route path="*" element={
+            <div className="text-center py-32">
+              <p className="text-white text-2xl font-semibold mb-2">404</p>
+              <p className="text-gray-400">Page not found</p>
+            </div>
+          } />
         </Routes>
       </main>
     </div>

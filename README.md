@@ -333,7 +333,7 @@ cd frontend && npm install && npm run dev
 - [x] Thread pool implementation — parallel bank processing
 - [x] Mock bank APIs — FastAPI simulations
 - [x] React dashboard — upload, jobs, audit log, notifications
-- [ ] Retry mechanism + edge case handling
+- [x] Retry mechanism + edge case handling
 - [ ] Unit + integration tests
 - [ ] Dockerize full stack
 - [ ] Deploy to DigitalOcean
