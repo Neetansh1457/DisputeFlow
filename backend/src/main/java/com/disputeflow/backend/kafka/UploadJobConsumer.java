@@ -1,5 +1,6 @@
 package com.disputeflow.backend.kafka;
 
+import com.disputeflow.backend.config.BankExecutorService;
 import com.disputeflow.backend.dto.kafka.UploadJobEvent;
 import com.disputeflow.backend.entity.Bank;
 import com.disputeflow.backend.entity.UploadJob;
@@ -10,13 +11,13 @@ import com.disputeflow.backend.repository.UploadJobRepository;
 import com.disputeflow.backend.service.AuditLogService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.*;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
 import java.io.File;
 import java.util.Map;
 
@@ -29,6 +30,7 @@ public class UploadJobConsumer {
     private final BankRepository bankRepository;
     private final AuditLogService auditLogService;
     private final RestTemplate restTemplate;
+    private final BankExecutorService bankExecutorService;
 
     private static final String PYTHON_ENGINE_URL = "http://localhost:8000";
 
@@ -53,15 +55,33 @@ public class UploadJobConsumer {
             return;
         }
 
+        // Submit to bank-specific thread pool
+        // This is the key change — each bank gets its own pool
+        bankExecutorService.submitJob(bank.getName(), () -> processJob(job, bank, event));
+
+        log.info("Job {} submitted to {} thread pool",
+                event.getJobId(), bank.getName());
+
+        // Log pool stats
+        BankExecutorService.PoolStats stats =
+                bankExecutorService.getPoolStats(bank.getName());
+        log.info("Pool stats for {} — active: {}, queued: {}, completed: {}",
+                bank.getName(),
+                stats.activeThreads(),
+                stats.queuedJobs(),
+                stats.completedJobs());
+    }
+
+    private void processJob(UploadJob job, Bank bank, UploadJobEvent event) {
+        log.info("Processing job {} on thread {}",
+                job.getId(), Thread.currentThread().getName());
         try {
-            // Mark as processing
             job.setStatus(JobStatus.PROCESSING);
             uploadJobRepository.save(job);
 
             auditLogService.log(job, job.getUser(), "JOB_PROCESSING_STARTED",
-                    "Job picked up by Kafka consumer");
+                    "Processing on thread: " + Thread.currentThread().getName());
 
-            // Call Python processing engine
             Map<String, Object> result = callPythonEngine(job, bank);
 
             if (result == null) {
@@ -75,7 +95,6 @@ public class UploadJobConsumer {
             String errorMessage = (String) result.getOrDefault("error_message", null);
             boolean autoProcessed = (boolean) result.getOrDefault("auto_processed", false);
 
-            // Update job based on result
             job.setAutoProcessed(autoProcessed);
             job.setRemarks(remarks);
 
@@ -91,7 +110,7 @@ public class UploadJobConsumer {
             uploadJobRepository.save(job);
 
         } catch (Exception ex) {
-            log.error("Error processing job {}: {}", event.getJobId(), ex.getMessage());
+            log.error("Error processing job {}: {}", job.getId(), ex.getMessage());
             handleFailure(job, ex.getMessage());
         }
     }
@@ -102,8 +121,6 @@ public class UploadJobConsumer {
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);
 
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-
-            // Add request metadata
             body.add("job_id", job.getId().toString());
             body.add("bank_prefix", bank.getFilePrefix());
             body.add("bank_name", bank.getName());
@@ -114,7 +131,6 @@ public class UploadJobConsumer {
             }
             body.add("timeout_seconds", bank.getTimeoutSeconds().toString());
 
-            // Add file
             File file = new File(job.getFilePath());
             if (file.exists()) {
                 body.add("file", new FileSystemResource(file));
