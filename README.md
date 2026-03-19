@@ -332,7 +332,7 @@ cd frontend && npm install && npm run dev
 - [x] Python processing engine — filename parser + PDF validator
 - [x] Thread pool implementation — parallel bank processing
 - [x] Mock bank APIs — FastAPI simulations
-- [ ] React dashboard — upload, jobs, audit log, notifications
+- [x] React dashboard — upload, jobs, audit log, notifications
 - [ ] Retry mechanism + edge case handling
 - [ ] Unit + integration tests
 - [ ] Dockerize full stack
