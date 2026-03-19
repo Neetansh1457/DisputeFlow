@@ -11,7 +11,7 @@ function UploadPage() {
   const [mode, setMode] = useState('single')
 
   return (
-    <div>
+    <div className="max-w-xl mx-auto">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-white mb-1">Upload Disputes</h1>
@@ -108,7 +108,7 @@ const handleFileChange = (e) => {
   }
 
   return (
-    <div className="max-w-xl">
+    <div className="max-w-xl mx-auto">
       <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 space-y-5">
 
         {/* File Upload */}
