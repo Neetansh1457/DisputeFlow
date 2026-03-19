@@ -329,7 +329,7 @@ cd frontend && npm install && npm run dev
 - [x] Project setup (Spring Boot + PostgreSQL + Kafka)
 - [x] Core backend — entities, repositories, REST endpoints
 - [x] Kafka integration — producer + consumer
-- [ ] Python processing engine — filename parser + PDF validator
+- [x] Python processing engine — filename parser + PDF validator
 - [ ] Thread pool implementation — parallel bank processing
 - [ ] Mock bank APIs — FastAPI simulations
 - [ ] React dashboard — upload, jobs, audit log, notifications
