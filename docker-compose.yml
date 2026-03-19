@@ -1,1 +1,66 @@
-"" 
+version: '3.8'
+
+services:
+
+  # ─────────────────────── PostgreSQL ───────────────────────────
+  postgres:
+    image: postgres:16
+    container_name: disputeflow-postgres
+    environment:
+      POSTGRES_DB: disputeflow
+      POSTGRES_USER: disputeflow
+      POSTGRES_PASSWORD: disputeflow123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - disputeflow-network
+
+  # ──────────────────Zookeeper ────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: disputeflow-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - disputeflow-network
+
+  # ───────────────────────Kafka ────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: disputeflow-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
+    networks:
+      - disputeflow-network
+
+  # ─────────────────────── Kafka UI────────────────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: disputeflow-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: disputeflow
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    networks:
+      - disputeflow-network
+
+volumes:
+  postgres_data:
+
+networks:
+  disputeflow-network:
+    driver: bridge
