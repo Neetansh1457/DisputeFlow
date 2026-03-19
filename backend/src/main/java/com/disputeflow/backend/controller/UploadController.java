@@ -22,7 +22,17 @@ public class UploadController {
     @PostMapping("/single")
     public ResponseEntity<ApiResponse<JobResponse>> singleUpload(
             @RequestPart("file") MultipartFile file,
-            @RequestPart("request") @Valid SingleUploadRequest request) {
+            @RequestParam(value = "userId", required = false) UUID userId,
+            @RequestParam(value = "bankId", required = false) UUID bankId,
+            @RequestParam(value = "caseId", required = false) String caseId,
+            @RequestParam(value = "documentType", required = false) String documentType) {
+
+        SingleUploadRequest request = new SingleUploadRequest();
+        request.setUserId(userId);
+        request.setBankId(bankId);
+        request.setCaseId(caseId);
+        request.setDocumentType(documentType != null ? documentType : "REPRESENTATION");
+
         JobResponse job = uploadService.processSingleUpload(request, file);
         return ResponseEntity.ok(ApiResponse.success("Upload job created", job));
     }
