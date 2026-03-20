@@ -454,10 +454,7 @@ A dedicated manager view showing:
 - IPH trends over time
 - Revenue recovered vs at-risk estimates
 
-```
-
 ---
-
 
 ## 🤔 Why This Project?
 
@@ -468,4 +465,3 @@ The goal was not just to build a file upload tool — but to design a production
 ---
 
 _Built by Neetansh — open to feedback, contributions, and conversations._
-```
