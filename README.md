@@ -346,11 +346,118 @@ cd frontend && npm install && npm run dev
 - [x] Mock bank APIs — FastAPI simulations
 - [x] React dashboard — upload, jobs, audit log, notifications
 - [x] Retry mechanism + edge case handling
-- [ ] Unit + integration tests
+- [ ] Unit + integration tests _(deferred — prioritised deployment)_
 - [x] Dockerize full stack
 - [x] Deploy to DigitalOcean
 
 ---
+
+## 🔮 Future Roadmap — v2
+
+### 🎨 PDF Colour Preservation
+
+Bank portals and scanning workflows often convert documents
+to black and white through aggressive compression, stripping
+colour data to reduce file size. This is particularly
+damaging for proof of delivery documents where colour photos
+of signatures and labels serve as stronger chargeback evidence.
+
+Planned improvement: replace blunt compression with intelligent
+PDF optimisation using `pikepdf` — reducing file size while
+preserving colour. Estimated evidence quality improvement:
+significant, particularly for Discover and AMEX representation cases.
+
+---
+
+### 🤖 AI-Powered Representation Quality Checker
+
+An LLM-based document analyser that validates uploaded PDFs
+against reason code-specific requirements before submission —
+available in single upload mode only.
+
+**How it works:**
+
+- Investigator uploads document in single mode
+- LLM reads the document against the reason code rules
+- Returns a quality report before submission:
+
+```
+  ✅ Policy document        — present
+  ✅ Proof of delivery      — present
+  ⚠️ Reason Code Verbiage   — missing
+  ❌ Similar Invoice        — not found
+```
+
+- Investigator fixes gaps before submitting
+- Directly increases chargeback win rate and revenue recovery
+
+This feature addresses a core business problem: incomplete
+representations are the leading cause of lost chargebacks.
+A pre-submission quality check reduces that failure rate
+significantly — with a direct, measurable impact on revenue.
+
+---
+
+### 🔐 Per-Investigator Credential Vault
+
+Currently the system uses mock bank APIs. In a real deployment,
+each bank portal requires individual investigator credentials —
+centralised credentials violate bank terms of service and
+trigger rate limiting.
+
+**Architecture:**
+
+- Each investigator stores their bank credentials once via
+  a secure credentials page
+- Credentials encrypted at rest using AES-256
+- Encryption keys stored separately from credential data
+- During processing: credentials decrypted in memory,
+  used for authentication, cleared immediately after
+- Bank sees the individual investigator's account activity —
+  fully compliant and traceable
+
+**Browser automation layer (Playwright):**
+Most bank portals use 2FA, CAPTCHA, and session tokens that
+prevent simple HTTP calls. The credential vault pairs with
+a Playwright automation layer that operates a headless browser
+— navigating portals, handling authentication, and performing
+actions exactly as a human would. This replaces the mock bank
+layer with real portal interactions while keeping the entire
+processing pipeline unchanged.
+
+---
+
+### 🔑 Spring Security + Full Authentication
+
+Complete role-based access control with JWT tokens:
+
+```
+INVESTIGATOR → upload, view own jobs, action flagged cases
+MANAGER      → team overview, performance metrics, SLA tracking
+ADMIN        → bank management, system config, all audit logs
+```
+
+Includes team management — managers invite investigators,
+view team-wide dashboards, and track IPH (investigations
+per hour) metrics per investigator.
+
+---
+
+### 📊 Manager Analytics Dashboard
+
+A dedicated manager view showing:
+
+- Cases processed per investigator per day
+- Auto-processed vs manually reviewed ratio
+- Bank-wise failure rates and portal reliability
+- SLA compliance tracking
+- IPH trends over time
+- Revenue recovered vs at-risk estimates
+
+```
+
+---
+
 
 ## 🤔 Why This Project?
 
@@ -361,3 +468,4 @@ The goal was not just to build a file upload tool — but to design a production
 ---
 
 _Built by Neetansh — open to feedback, contributions, and conversations._
+```
