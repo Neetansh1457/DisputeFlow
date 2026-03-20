@@ -6,54 +6,59 @@ services:
     environment:
       POSTGRES_DB: disputeflow
       POSTGRES_USER: disputeflow
-      POSTGRES_PASSWORD: disputeflow123
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: disputeflow_prod_2024
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - disputeflow-network
+    restart: unless-stopped
 
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    container_name: disputeflow-zookeeper
+  backend:
+    build: ./backend
+    container_name: disputeflow-backend
     environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    networks:
-      - disputeflow-network
-
-  kafka:
-    image: confluentinc/cp-kafka:7.5.0
-    container_name: disputeflow-kafka
-    depends_on:
-      - zookeeper
+      SPRING_PROFILES_ACTIVE: prod
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JAVA_OPTS: "-Xmx512m -Xms256m"
+      PROCESSOR_URL: http://processor:8000
+    
     ports:
-      - "9092:9092"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
-    networks:
-      - disputeflow-network
-
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: disputeflow-kafka-ui
+      - "8080:8080"
     depends_on:
-      - kafka
-    ports:
-      - "8090:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: disputeflow
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      - postgres
     networks:
       - disputeflow-network
+    restart: unless-stopped
+
+  processor:
+    build: ./processor
+    container_name: disputeflow-processor
+    ports:
+      - "8000:8000"
+    networks:
+      - disputeflow-network
+    restart: unless-stopped
+
+  mock-banks:
+    build: ./mock-banks
+    container_name: disputeflow-mock-banks
+    ports:
+      - "8001:8001"
+    networks:
+      - disputeflow-network
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: disputeflow-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - disputeflow-network
+    restart: unless-stopped
 
 volumes:
   postgres_data:

@@ -24,6 +24,9 @@ import java.util.Map;
 @Component
 @RequiredArgsConstructor
 @Slf4j
+
+
+
 public class UploadJobConsumer {
 
     private final UploadJobRepository uploadJobRepository;
@@ -32,7 +35,10 @@ public class UploadJobConsumer {
     private final RestTemplate restTemplate;
     private final BankExecutorService bankExecutorService;
 
-    private static final String PYTHON_ENGINE_URL = "http://localhost:8000";
+    private static final String PYTHON_ENGINE_URL =
+            System.getenv("PROCESSOR_URL") != null
+                    ? System.getenv("PROCESSOR_URL")
+                    : "http://localhost:8000";
 
     @KafkaListener(
             topics = "upload.jobs",
