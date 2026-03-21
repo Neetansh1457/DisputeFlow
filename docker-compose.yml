@@ -17,13 +17,14 @@ services:
     container_name: disputeflow-backend
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_USER: disputeflow
+      DB_PASSWORD: disputeflow_prod_2024
       JAVA_OPTS: "-Xmx512m -Xms256m"
       PROCESSOR_URL: http://processor:8000
-
     ports:
       - "8080:8080"
+    volumes:
+      - ./uploads:/app/uploads
     depends_on:
       - postgres
     networks:
