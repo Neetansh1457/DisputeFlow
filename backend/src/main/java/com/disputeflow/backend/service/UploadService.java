@@ -36,26 +36,38 @@ public class UploadService {
 
     // Single Upload
     public JobResponse processSingleUpload(SingleUploadRequest request, MultipartFile file) {
-        // 1. Validate file
+
+        log.info("STEP 1: validate file");
         validateFile(file);
 
-        // 2. Check for duplicate
+        log.info("STEP 2: duplicate check");
         if (uploadJobRepository.existsByCaseIdAndBankId(request.getCaseId(), request.getBankId())) {
             throw new RuntimeException("Case " + request.getCaseId() +
                     " already submitted for this bank");
         }
 
-        // 3. Get user and bank
+        log.info("STEP 3: fetch user + bank");
         User user = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new RuntimeException("User not found"));
+
         Bank bank = bankRepository.findById(request.getBankId())
                 .orElseThrow(() -> new RuntimeException("Bank not found"));
 
-        // 4. Save file
-        String filePath = saveFile(file, bank.getName(), request.getCaseId());
-        String fileHash = computeHash(file);
+        log.info("STEP 4: reading file bytes");
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to read file");
+        }
 
-        // 5. Create job
+        log.info("STEP 5: saving file");
+        String filePath = saveFile(bytes, bank.getName(), request.getCaseId());
+
+        log.info("STEP 6: skipping hash temporarily");
+        String fileHash = "temp-hash";
+
+        log.info("STEP 7: creating job");
         UploadJob job = UploadJob.builder()
                 .user(user)
                 .bank(bank)
@@ -73,12 +85,14 @@ public class UploadService {
 
         UploadJob saved = uploadJobRepository.save(job);
 
-        // 6. Log it
+        log.info("STEP 8: audit log");
         auditLogService.log(saved, user, "JOB_CREATED",
                 "Single upload job created for bank: " + bank.getName());
 
-        // 7. Publish to Kafka
-        uploadJobProducer.publishUploadJob(buildEvent(saved));
+        log.info("STEP 9: skipping Kafka publish temporarily");
+        // uploadJobProducer.publishUploadJob(buildEvent(saved));
+
+        log.info("STEP 10: returning response");
 
         return uploadJobService.mapToResponse(saved);
     }
@@ -202,17 +216,20 @@ public class UploadService {
         }
     }
 
-    private String saveFile(MultipartFile file, String bankName, String caseId) {
-        try {
-            String dir = UPLOAD_DIR + bankName + "/";
-            Files.createDirectories(Paths.get(dir));
-            String fileName = caseId + "_" + System.currentTimeMillis() + ".pdf";
-            Path path = Paths.get(dir + fileName);
-            Files.write(path, file.getBytes());
-            return path.toString();
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to save file: " + e.getMessage());
-        }
+        private String saveFile(byte[] bytes, String bankName, String caseId) {
+            try {
+                String dir = UPLOAD_DIR + bankName + "/";
+                Files.createDirectories(Paths.get(dir));
+
+                String fileName = caseId + "_" + System.currentTimeMillis() + ".pdf";
+                Path path = Paths.get(dir + fileName);
+
+                Files.write(path, bytes);
+
+                return path.toString();
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to save file: " + e.getMessage());
+            }
     }
 
     private String computeHash(MultipartFile file) {
