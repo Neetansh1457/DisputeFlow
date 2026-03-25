@@ -16,9 +16,11 @@ public class CorsConfig {
         CorsConfiguration config = new CorsConfiguration();
 
         config.setAllowedOrigins(List.of(
-                "http://localhost:5173",
-                "http://localhost",
-                "http://localhost:80"
+            "http://localhost:5173",
+            "http://localhost",
+            "http://localhost:80",
+            "https://dispute-flow.app",
+            "https://www.dispute-flow.app"
         ));
         config.setAllowedMethods(List.of(
                 "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
