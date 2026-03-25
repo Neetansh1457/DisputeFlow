@@ -13,9 +13,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+
 import java.io.IOException;
 import java.nio.file.*;
-import java.security.MessageDigest;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -34,7 +34,7 @@ public class UploadService {
 
     private static final String UPLOAD_DIR = "uploads/";
 
-    // Single Upload
+    // ================= SINGLE UPLOAD =================
     public JobResponse processSingleUpload(SingleUploadRequest request, MultipartFile file) {
 
         log.info("STEP 1: validate file");
@@ -42,8 +42,7 @@ public class UploadService {
 
         log.info("STEP 2: duplicate check");
         if (uploadJobRepository.existsByCaseIdAndBankId(request.getCaseId(), request.getBankId())) {
-            throw new RuntimeException("Case " + request.getCaseId() +
-                    " already submitted for this bank");
+            throw new RuntimeException("Case already submitted");
         }
 
         log.info("STEP 3: fetch user + bank");
@@ -64,7 +63,7 @@ public class UploadService {
         log.info("STEP 5: saving file");
         String filePath = saveFile(bytes, bank.getName(), request.getCaseId());
 
-        log.info("STEP 6: skipping hash temporarily");
+        log.info("STEP 6: skipping hash");
         String fileHash = "temp-hash";
 
         log.info("STEP 7: creating job");
@@ -89,36 +88,19 @@ public class UploadService {
         auditLogService.log(saved, user, "JOB_CREATED",
                 "Single upload job created for bank: " + bank.getName());
 
-        log.info("STEP 9: skipping Kafka publish temporarily");
+        log.info("STEP 9: skipping Kafka");
         // uploadJobProducer.publishUploadJob(buildEvent(saved));
 
         log.info("STEP 10: returning response");
-
         return uploadJobService.mapToResponse(saved);
     }
 
-    // Batch Preview
-    public BatchPreviewResponse previewBatch(List<String> fileNames) {
-        List<BatchPreviewResponse.FilePreview> previews = fileNames.stream()
-                .map(this::previewFile)
-                .collect(Collectors.toList());
-
-        long readyCount = previews.stream().filter(BatchPreviewResponse.FilePreview::getIsReady).count();
-
-        return BatchPreviewResponse.builder()
-                .previews(previews)
-                .totalFiles(fileNames.size())
-                .readyCount((int) readyCount)
-                .needsReviewCount((int) (fileNames.size() - readyCount))
-                .build();
-    }
-
-    // Batch Upload
+    // ================= BATCH UPLOAD =================
     public BatchResponse processBatchUpload(UUID userId, List<MultipartFile> files) {
+
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // Create batch record
         UploadBatch batch = UploadBatch.builder()
                 .user(user)
                 .totalFiles(files.size())
@@ -135,25 +117,18 @@ public class UploadService {
             try {
                 validateFile(file);
 
-                // Parse filename to detect bank and case ID
                 FilenameParseResult parsed = parseFilename(file.getOriginalFilename());
-
-                if (parsed.getBankId() == null) {
-                    log.warn("Could not detect bank for file: {}", file.getOriginalFilename());
-                    continue;
-                }
+                if (parsed.getBankId() == null) continue;
 
                 Bank bank = bankRepository.findById(parsed.getBankId()).orElse(null);
                 if (bank == null) continue;
 
-                // Skip duplicates
                 if (uploadJobRepository.existsByCaseIdAndBankId(parsed.getCaseId(), bank.getId())) {
-                    log.warn("Duplicate skipped: {} for bank {}", parsed.getCaseId(), bank.getName());
                     continue;
                 }
 
-                String filePath = saveFile(file, bank.getName(), parsed.getCaseId());
-                String fileHash = computeHash(file);
+                byte[] bytes = file.getBytes();
+                String filePath = saveFile(bytes, bank.getName(), parsed.getCaseId());
 
                 UploadJob job = UploadJob.builder()
                         .batch(savedBatch)
@@ -162,7 +137,7 @@ public class UploadService {
                         .caseId(parsed.getCaseId())
                         .fileName(file.getOriginalFilename())
                         .filePath(filePath)
-                        .fileHash(fileHash)
+                        .fileHash("temp-hash")
                         .reasonCode(parsed.getReasonCode())
                         .documentType("REPRESENTATION")
                         .status(JobStatus.PENDING)
@@ -178,17 +153,11 @@ public class UploadService {
             }
         }
 
-        // Update batch total
         savedBatch.setTotalFiles(jobs.size());
         savedBatch.setStatus(BatchStatus.PROCESSING);
         uploadBatchRepository.save(savedBatch);
 
-        // Publish all jobs to Kafka
-        jobs.forEach(job -> {
-            auditLogService.log(job, user, "JOB_CREATED",
-                    "Batch job created for bank: " + job.getBank().getName());
-            uploadJobProducer.publishUploadJob(buildEvent(job));
-        });
+        log.info("Publishing jobs skipped (Kafka disabled)");
 
         return BatchResponse.builder()
                 .id(savedBatch.getId())
@@ -202,64 +171,37 @@ public class UploadService {
                 .build();
     }
 
-
+    // ================= HELPERS =================
     private void validateFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            throw new RuntimeException("File is empty or missing");
+            throw new RuntimeException("File is empty");
         }
         String filename = file.getOriginalFilename();
         if (filename == null || !filename.toLowerCase().endsWith(".pdf")) {
-            throw new RuntimeException("Only PDF files are accepted");
+            throw new RuntimeException("Only PDF allowed");
         }
         if (file.getSize() > 10 * 1024 * 1024) {
-            throw new RuntimeException("File size exceeds 10MB limit");
+            throw new RuntimeException("File too large");
         }
     }
 
-        private String saveFile(byte[] bytes, String bankName, String caseId) {
-            try {
-                String dir = UPLOAD_DIR + bankName + "/";
-                Files.createDirectories(Paths.get(dir));
-
-                String fileName = caseId + "_" + System.currentTimeMillis() + ".pdf";
-                Path path = Paths.get(dir + fileName);
-
-                Files.write(path, bytes);
-
-                return path.toString();
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to save file: " + e.getMessage());
-            }
-    }
-
-    private String computeHash(MultipartFile file) {
+    private String saveFile(byte[] bytes, String bankName, String caseId) {
         try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] hash = md.digest(file.getBytes());
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hash) sb.append(String.format("%02x", b));
-            return sb.toString();
-        } catch (Exception e) {
-            return "hash-unavailable";
+            String dir = UPLOAD_DIR + bankName + "/";
+            Files.createDirectories(Paths.get(dir));
+
+            String fileName = caseId + "_" + System.currentTimeMillis() + ".pdf";
+            Path path = Paths.get(dir + fileName);
+
+            Files.write(path, bytes);
+
+            return path.toString();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to save file: " + e.getMessage());
         }
-    }
-
-    private BatchPreviewResponse.FilePreview previewFile(String fileName) {
-        FilenameParseResult parsed = parseFilename(fileName);
-        boolean isReady = parsed.getBankId() != null && parsed.getCaseId() != null;
-
-        return BatchPreviewResponse.FilePreview.builder()
-                .fileName(fileName)
-                .detectedBank(parsed.getBankName())
-                .detectedCaseId(parsed.getCaseId())
-                .detectedReasonCode(parsed.getReasonCode())
-                .isReady(isReady)
-                .issueReason(isReady ? null : "Could not detect bank or case ID from filename")
-                .build();
     }
 
     private FilenameParseResult parseFilename(String fileName) {
-        // Expected format: BANKPREFIX_CASEID.pdf or BANKPREFIX_CASEID_REASONCODE.pdf
         FilenameParseResult result = new FilenameParseResult();
         if (fileName == null) return result;
 
@@ -272,7 +214,6 @@ public class UploadService {
         result.setCaseId(parts[1]);
         if (parts.length >= 3) result.setReasonCode(parts[2]);
 
-        // Look up bank by prefix
         bankRepository.findByFilePrefix(prefix).ifPresent(bank -> {
             result.setBankId(bank.getId());
             result.setBankName(bank.getName());
@@ -297,7 +238,6 @@ public class UploadService {
                 .batchId(job.getBatch() != null ? job.getBatch().getId() : null)
                 .build();
     }
-
 
     @lombok.Data
     private static class FilenameParseResult {
