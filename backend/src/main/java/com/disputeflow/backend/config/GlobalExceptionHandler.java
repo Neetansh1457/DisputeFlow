@@ -13,14 +13,14 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
-
-    @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<ApiResponse<Void>> handleRuntimeException(RuntimeException ex) {
+        
+        @ExceptionHandler(RuntimeException.class)
+        public ResponseEntity<ApiResponse<Void>> handleRuntimeException(RuntimeException ex) {
         log.error("Runtime exception: {}", ex.getMessage());
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(ex.getMessage()));
-    }
+        }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidationException(
