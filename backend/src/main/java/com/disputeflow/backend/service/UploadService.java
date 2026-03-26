@@ -157,7 +157,7 @@ public class UploadService {
         savedBatch.setStatus(BatchStatus.PROCESSING);
         uploadBatchRepository.save(savedBatch);
 
-        log.info("Publishing jobs skipped (Kafka disabled)");
+        log.info("Kafka publishing skipped (debug mode)");
 
         return BatchResponse.builder()
                 .id(savedBatch.getId())
@@ -168,6 +168,38 @@ public class UploadService {
                 .flagged(0)
                 .status(BatchStatus.PROCESSING)
                 .createdAt(savedBatch.getCreatedAt())
+                .build();
+    }
+
+    // ================= BATCH PREVIEW =================
+    public BatchPreviewResponse previewBatch(List<String> fileNames) {
+        List<BatchPreviewResponse.FilePreview> previews = fileNames.stream()
+                .map(this::previewFile)
+                .collect(Collectors.toList());
+
+        long readyCount = previews.stream()
+                .filter(BatchPreviewResponse.FilePreview::getIsReady)
+                .count();
+
+        return BatchPreviewResponse.builder()
+                .previews(previews)
+                .totalFiles(fileNames.size())
+                .readyCount((int) readyCount)
+                .needsReviewCount((int) (fileNames.size() - readyCount))
+                .build();
+    }
+
+    private BatchPreviewResponse.FilePreview previewFile(String fileName) {
+        FilenameParseResult parsed = parseFilename(fileName);
+        boolean isReady = parsed.getBankId() != null && parsed.getCaseId() != null;
+
+        return BatchPreviewResponse.FilePreview.builder()
+                .fileName(fileName)
+                .detectedBank(parsed.getBankName())
+                .detectedCaseId(parsed.getCaseId())
+                .detectedReasonCode(parsed.getReasonCode())
+                .isReady(isReady)
+                .issueReason(isReady ? null : "Could not detect bank or case ID")
                 .build();
     }
 
