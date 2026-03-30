@@ -16,6 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.file.*;
+import java.security.MessageDigest;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -42,7 +43,7 @@ public class UploadService {
 
         log.info("STEP 2: duplicate check");
         if (uploadJobRepository.existsByCaseIdAndBankId(request.getCaseId(), request.getBankId())) {
-            throw new RuntimeException("Case already submitted");
+            throw new RuntimeException("Case " + request.getCaseId() + " already submitted for this bank");
         }
 
         log.info("STEP 3: fetch user + bank");
@@ -63,8 +64,8 @@ public class UploadService {
         log.info("STEP 5: saving file");
         String filePath = saveFile(bytes, bank.getName(), request.getCaseId());
 
-        log.info("STEP 6: skipping hash");
-        String fileHash = "temp-hash";
+        log.info("STEP 6: computing hash");
+        String fileHash = computeHash(bytes);
 
         log.info("STEP 7: creating job");
         UploadJob job = UploadJob.builder()
@@ -88,8 +89,8 @@ public class UploadService {
         auditLogService.log(saved, user, "JOB_CREATED",
                 "Single upload job created for bank: " + bank.getName());
 
-        log.info("STEP 9: skipping Kafka");
-        // uploadJobProducer.publishUploadJob(buildEvent(saved));
+        log.info("STEP 9: publishing to Kafka");
+        uploadJobProducer.publishUploadJob(buildEvent(saved));
 
         log.info("STEP 10: returning response");
         return uploadJobService.mapToResponse(saved);
@@ -124,11 +125,13 @@ public class UploadService {
                 if (bank == null) continue;
 
                 if (uploadJobRepository.existsByCaseIdAndBankId(parsed.getCaseId(), bank.getId())) {
+                    log.warn("Duplicate skipped: {} for bank {}", parsed.getCaseId(), bank.getName());
                     continue;
                 }
 
                 byte[] bytes = file.getBytes();
                 String filePath = saveFile(bytes, bank.getName(), parsed.getCaseId());
+                String fileHash = computeHash(bytes);
 
                 UploadJob job = UploadJob.builder()
                         .batch(savedBatch)
@@ -137,7 +140,7 @@ public class UploadService {
                         .caseId(parsed.getCaseId())
                         .fileName(file.getOriginalFilename())
                         .filePath(filePath)
-                        .fileHash("temp-hash")
+                        .fileHash(fileHash)
                         .reasonCode(parsed.getReasonCode())
                         .documentType("REPRESENTATION")
                         .status(JobStatus.PENDING)
@@ -157,7 +160,12 @@ public class UploadService {
         savedBatch.setStatus(BatchStatus.PROCESSING);
         uploadBatchRepository.save(savedBatch);
 
-        log.info("Kafka publishing skipped (debug mode)");
+        // Publish all jobs to Kafka
+        jobs.forEach(job -> {
+            auditLogService.log(job, user, "JOB_CREATED",
+                    "Batch job created for bank: " + job.getBank().getName());
+            uploadJobProducer.publishUploadJob(buildEvent(job));
+        });
 
         return BatchResponse.builder()
                 .id(savedBatch.getId())
@@ -199,21 +207,21 @@ public class UploadService {
                 .detectedCaseId(parsed.getCaseId())
                 .detectedReasonCode(parsed.getReasonCode())
                 .isReady(isReady)
-                .issueReason(isReady ? null : "Could not detect bank or case ID")
+                .issueReason(isReady ? null : "Could not detect bank or case ID from filename")
                 .build();
     }
 
     // ================= HELPERS =================
     private void validateFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            throw new RuntimeException("File is empty");
+            throw new RuntimeException("File is empty or missing");
         }
         String filename = file.getOriginalFilename();
         if (filename == null || !filename.toLowerCase().endsWith(".pdf")) {
-            throw new RuntimeException("Only PDF allowed");
+            throw new RuntimeException("Only PDF files are accepted");
         }
         if (file.getSize() > 10 * 1024 * 1024) {
-            throw new RuntimeException("File too large");
+            throw new RuntimeException("File size exceeds 10MB limit");
         }
     }
 
@@ -221,15 +229,24 @@ public class UploadService {
         try {
             String dir = UPLOAD_DIR + bankName + "/";
             Files.createDirectories(Paths.get(dir));
-
             String fileName = caseId + "_" + System.currentTimeMillis() + ".pdf";
             Path path = Paths.get(dir + fileName);
-
             Files.write(path, bytes);
-
             return path.toString();
         } catch (IOException e) {
             throw new RuntimeException("Failed to save file: " + e.getMessage());
+        }
+    }
+
+    private String computeHash(byte[] bytes) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] hash = md.digest(bytes);
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hash) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (Exception e) {
+            return "hash-unavailable";
         }
     }
 
