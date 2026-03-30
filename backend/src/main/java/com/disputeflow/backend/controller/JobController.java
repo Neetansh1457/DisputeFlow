@@ -32,7 +32,8 @@ public class JobController {
         if (status != null) {
             return ResponseEntity.ok(ApiResponse.success(uploadJobService.getJobsByStatus(status)));
         }
-        return ResponseEntity.ok(ApiResponse.success(uploadJobService.getJobsByStatus(null)));
+        List<JobResponse> allJobs = uploadJobService.getAllJobs();
+        return ResponseEntity.ok(ApiResponse.success(allJobs));
     }
 
     @PatchMapping("/{id}/retry")

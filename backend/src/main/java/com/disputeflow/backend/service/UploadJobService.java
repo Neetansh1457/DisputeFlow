@@ -92,4 +92,12 @@ public class UploadJobService {
                 .updatedAt(job.getUpdatedAt())
                 .build();
     }
+
+    public List<JobResponse> getAllJobs() {
+    return uploadJobRepository.findAll()
+            .stream()
+            .map(this::mapToResponse)
+            .collect(Collectors.toList());
+}
+
 }
