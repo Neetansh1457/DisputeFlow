@@ -20,7 +20,7 @@ function JobsDashboard() {
   const queryClient = useQueryClient();
 
   const { data: jobs = [], isLoading } = useQuery({
-    queryKey: ["jobs"],
+    queryKey: ["jobs", CURRENT_USER_ID],
     queryFn: () => getAllJobs({ userId: CURRENT_USER_ID }),
     refetchInterval: 5000,
   });
